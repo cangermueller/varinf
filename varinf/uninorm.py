@@ -38,6 +38,13 @@ class PPosterior(object):
         else:
             return self.pdf_scalar(u, l)
 
+    def mean(self):
+        return np.array([self.params.u, self.params.a / self.params.b])
+
+    def var(self):
+        return np.array([self.params.b / (self.params.k * (self.params.a - 1)),
+                         self.params.a / self.params.b**2])
+
 
 class QPosterior(PPosterior):
     def __init__(self, params=Params()):
@@ -126,10 +133,14 @@ def infer_qposterior(x, pprior_params, init_params=Params(), maxit=100, eps=1e-1
     return InferResults(p_list, l_list)
 
 
-def infer_pposterior(x):
-    xm = np.mean(x)
+def infer_pposterior(x, prior_params):
     n = len(x)
-    return Params(u=xm, k=n, a=0.5 * n, b=0.5 * np.sum((x - xm)**2))
+    xm = np.mean(x)
+    xs = np.sum((x - xm)**2)
+    return Params(u=(n*xm+prior_params.k*prior_params.u)/(n+prior_params.k),
+                  k=n+prior_params.k,
+                  a=0.5*n+prior_params.a,
+                  b=0.5*(xs+(prior_params.k*n*(xm-prior_params.u)**2)/(prior_params.k+n)))
 
 
 def simulate(u=0.0, l=1.0, size=100):

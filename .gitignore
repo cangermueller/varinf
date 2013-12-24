@@ -1,6 +1,7 @@
 *.py[cod]
 .ipynb_*
 *.swp
+.ropeproject
 
 # C extensions
 *.so

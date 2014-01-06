@@ -19,6 +19,7 @@ class NormalWishartParams(object):
                                                        self.W.__str__(),
                                                        self.v.__str__())
 
+
 def infer_q(X, p_pi, p_nw, q_pi0=None, q_nw0=None, maxit=100):
     N = X.shape[0]
     D = X.shape[1]
@@ -114,9 +115,23 @@ def wishart_H(W, v):
 
 def prior_uninformative(D=1, K=1):
     p_pi = np.ones(K) * 1.0 / K
-    p_nw = NormalWishartParams(u=np.random.normal(0.0, 1.0, D),
+    p_nw = NormalWishartParams(u=np.random.normal(0.0, 0.001, D),
                                 b=1e-3+np.random.gamma(0.001, 1.0/0.001),
-                                W=np.diag(np.random.normal(1.0, 0.01, D)),
+                                W=np.diag(np.random.normal(0.1, 0.001, D)),
                                 v=(D+1)+np.random.gamma(0.001, 0.001))
     return (p_pi, p_nw)
+
+
+def str_p(p_pi, p_nw):
+    s = 'pi:\n{pi:s}\n\nnw:\n{nw:s}'.format(pi=p_pi.__str__(), nw=p_nw.__str__())
+    return s
+
+def str_q(q_z, q_pi, q_nw):
+    s = []
+    s.append('pi:\n{:s}'.format(q_pi.__str__()))
+    for i, nw in enumerate(q_nw):
+        s.append('nw{:2d}:\n{:s}'.format(i, nw.__str__()))
+    s.append('z:\n{:s}'.format(q_z.__str__()))
+    return '\n\n'.join(s)
+
 

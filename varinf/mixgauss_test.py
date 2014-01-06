@@ -1,7 +1,7 @@
 import unittest
 from scipy.special import multigammaln, psi
+import scipy.stats
 import numpy as np
-
 import mixgauss
 
 
@@ -29,7 +29,6 @@ class MixGaussTest(unittest.TestCase):
         n = 5
         H = -mixgauss.logB(W, 5) - mixgauss.wishart_Elog(W, 5) + 5
         self.assertAlmostEqual(mixgauss.wishart_H(W, n), H)
-
 
 
 

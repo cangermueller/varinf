@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.special import psi, gamma, gammaln, multigammaln
-from copy import copy
+import copy
 
 
 class NormalWishartParams(object):
@@ -14,10 +14,11 @@ class NormalWishartParams(object):
         self.v = v
 
     def __str__(self):
-        return 'u={:s}\nb={:s}\nW={:s}\nv={:s}'.format(self.u.__str__(),
-                                                       self.b.__str__(),
-                                                       self.W.__str__(),
-                                                       self.v.__str__())
+        return 'u={:s}\nb={:s}\nW={:s}\nv={:s}\nL={:s}'.format(self.u.__str__(),
+                                                               self.b.__str__(),
+                                                               self.W.__str__(),
+                                                               self.v.__str__(),
+                                                               (self.W*self.v).__str__())
 
 
 def infer_q(X, p_pi, p_nw, q_pi0=None, q_nw0=None, maxit=100):
@@ -28,11 +29,11 @@ def infer_q(X, p_pi, p_nw, q_pi0=None, q_nw0=None, maxit=100):
 
     q_z = np.empty((N, K))
     if q_pi0 is None:
-        q_pi0 = copy(p_pi)
+        q_pi0 = copy.deepcopy(p_pi)
     if q_nw0 is None:
-        q_nw0 = [copy(p_nw) for k in range(K)]
-    q_pi = copy(q_pi0)
-    q_nw = copy(q_nw0)
+        q_nw0 = [copy.deepcopy(p_nw) for k in range(K)]
+    q_pi = copy.deepcopy(q_pi0)
+    q_nw = copy.deepcopy(q_nw0)
     for it in range(maxit):
         # E-step: update q(z)
         log_pi = psi(q_pi) - psi(np.sum(q_pi))
@@ -48,9 +49,10 @@ def infer_q(X, p_pi, p_nw, q_pi0=None, q_nw0=None, maxit=100):
             c = np.max(q_z[n])
             q_z[n] = np.exp(q_z[n] - c - np.log(np.sum(np.exp(q_z[n] - c))))
 
+
         # M-step: update q(pi) and q(uk,lk)
-        nk = np.sum(q_z, 0)
-        XK = np.diag(nk).dot(np.transpose(q_z).dot(X)) / sum(nk)
+        nk = np.sum(q_z, 0) + 1e-10
+        XK = np.diag(1/nk).dot(np.transpose(q_z).dot(X))
         SK = []
         for k in range(K):
             SK.append(np.zeros((D, D)))
@@ -63,13 +65,14 @@ def infer_q(X, p_pi, p_nw, q_pi0=None, q_nw0=None, maxit=100):
         s = p_nw.b * nk / (p_nw.b + nk)
         for k in range(K):
             q_nw[k].b = p_nw.b + nk[k]
-            q_nw[k].u = (p_nw.b * p_nw.u - nk[k] * XK[k]) / q_nw[k].b
+            q_nw[k].u = (p_nw.b * p_nw.u + nk[k] * XK[k]) / q_nw[k].b
             t = XK[k] - p_nw.u
             q_nw[k].W = W_inv + nk[k] * SK[k] + s[k] * np.outer(t, t)
             q_nw[k].W = np.linalg.inv(q_nw[k].W)
             q_nw[k].v = p_nw.v + nk[k]
 
-        # Compute variational bound
+        # Variational bound
+        # E[ln p(X|Z,u,L)]
         l = 0.0
         t = D*np.log(2*np.pi)
         s = 0.0
@@ -77,21 +80,30 @@ def infer_q(X, p_pi, p_nw, q_pi0=None, q_nw0=None, maxit=100):
             s += nk[k] * (log_lambda[k] - D/q_nw[k].b - q_nw[k].v*np.trace(SK[k].dot(q_nw[k].W)) \
                           -q_nw[k].v*(XK[k]-q_nw[k].u).dot(q_nw[k].W).dot(XK[k]-q_nw[k].u) - t)
         l += 0.5 * s
-        l += np.sum(q_z.dot(log_pi))
+        # E[ln p(Z|pi)]
+        l += log_pi.dot(nk)
+        # E[ln p(pi)]
         l += logC(p_pi) + (p_pi - 1).dot(log_pi)
+        l1 = l
+        # E[ln p(u, L)]
         t = D*np.log(p_nw.b/(2*np.pi))
         s = 0.0
         for k in range(K):
             s += t + log_lambda[k] - D*p_nw.b/q_nw[k].b \
                     - p_nw.b*q_nw[k].v*(q_nw[k].u-p_nw.u).dot(q_nw[k].W).dot(q_nw[k].u-p_nw.u) \
                     - q_nw[k].v*np.trace(W_inv.dot(q_nw[k].W))
-        l += 0.5*s + 0.5*(p_nw.v-D-1)*np.sum(log_lambda)
-        l += np.sum(q_z*np.log(q_z))
-        l += (q_pi - 1).dot(log_lambda) + logC(q_pi)
+        # import ipdb
+        # ipdb.set_trace()
+        l += 0.5*s + 0.5*(p_nw.v-D-1)*np.sum(log_lambda) + K*logB(p_nw.W, p_nw.v)
+        # E[ln q(Z)]
+        l -= np.sum(q_z*np.log(q_z + 1e-10))
+        # E[ln q(pi)]
+        l -= (q_pi - 1).dot(log_lambda) + logC(q_pi)
+        # E[ln q(u, L)]
         for k in range(K):
-            l += 0.5*log_lambda[k] + 0.5*D*np.log(q_nw[k].b/(2*np.pi)) - 0.5*D - wishart_H(q_nw[k].W, q_nw[k].v)
+            l -= 0.5*log_lambda[k] + 0.5*D*np.log(q_nw[k].b/(2*np.pi)) - 0.5*D - wishart_H(q_nw[k].W, q_nw[k].v)
 
-        print it, l
+        print it, l, l1, l - l1
 
     return q_z, q_pi, q_nw
 
@@ -114,11 +126,8 @@ def wishart_H(W, v):
 
 
 def prior_uninformative(D=1, K=1):
-    p_pi = np.ones(K) * 1.0 / K
-    p_nw = NormalWishartParams(u=np.random.normal(0.0, 0.001, D),
-                                b=1e-3+np.random.gamma(0.001, 1.0/0.001),
-                                W=np.diag(np.random.normal(0.1, 0.001, D)),
-                                v=(D+1)+np.random.gamma(0.001, 0.001))
+    p_pi = np.ones(K)
+    p_nw = NormalWishartParams(u=np.ones(D), b=1.0, W=np.eye(D), v=D)
     return (p_pi, p_nw)
 
 
